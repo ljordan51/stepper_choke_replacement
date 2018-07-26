@@ -1,0 +1,46 @@
+/*
+
+*/
+
+#define OC0A  PD6
+#define OC0B  PD5
+#define cranking_pin  PB0
+
+void setup() {
+  
+  // Cranking pin configure as input
+  DDRB &= ~_BV(cranking_pin);
+  
+  // Timer setup
+  
+  // Toggle output compare pins on compare match A, CTC mode, 1024 prescaler
+  TCCR0A |= _BV(COM0A0) | _BV(COM0B0) | _BV(WGM01);
+  TCCR0A &= ~_BV(COM0A1) & ~_BV(COM0B1) & ~_BV(WGM00);
+  TCCR0B |= _BV(CS02) | _BV(CS00);
+  TCCR0B &= ~_BV(CS01) & ~_BV(WGM02);
+  
+  // Output compare vals
+  OCR0A = 0xFF;
+  OCR0B = 0x80;
+  
+  // Configure output compare pins as inputs until cranking starts
+  DDRD &= ~_BV(OC0A) & ~_BV(OC0B);
+  
+}
+
+void loop() {
+  
+  if(bit_is_set(PINB,cranking_pin)){
+    DDRD |= _BV(OC0A) | _BV(OC0B); // configure output compare pins as outputs
+    TCCR0A |= _BV(COM0A0) | _BV(COM0B0); // enable toggling from timer 0
+    
+    _delay_ms(500); // Should be roughly 0.5 seconds to do half turn?
+    
+    TCCR0A &= ~_BV(COM0A1) & ~_BV(COM0A0) & ~_BV(COM0B1) & ~_BV(COM0B0); // Disable toggling on output compare
+    
+    _delay_ms(5000); // Keep it open until cranking is done?
+    
+    DDRD &= ~_BV(OC0A) & ~_BV(OC0B); // Stop driving coils, valve should close?
+  }
+  
+}
