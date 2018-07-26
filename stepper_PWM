@@ -32,6 +32,10 @@ void setup() {
   // Cranking pin configure as input
   crank_reg &= ~_BV(crank_pin);
   
+  // Configure interrupt for input pin
+  PCICR |= _BV(PCIE1);
+  PCMSK1 |= _BV(PC0);
+  
   // Configure output pins as outputs and give them default starting values
   // These are not driven by the timer output compares and need to be driven in ISRs
   out_reg |= _BV(out_pin1) | _BV(out_pin2); // configure as outputs
