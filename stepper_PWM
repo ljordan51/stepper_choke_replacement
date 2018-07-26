@@ -10,6 +10,7 @@ controlled by setting the output compare register values (B should always be hal
 #define crank_pin   PC0 // pin that should be low normally, high 12V when cranking, and low again when done
 #define crank_reg  DDRC // input and output pins intentionally kept on separate registers
 #define crank_inp  PINC // pin register to read input pin val
+#define crank_port PORTC // port register for internal pull-up
 #define crank_stat    0 // bit address in gFlag, low is not cranking
 
 /*  Global Variables  */
@@ -19,8 +20,9 @@ void setup() {
   
   sei(); // enable interrupts
   
-  // Cranking pin configure as input
+  // Cranking pin configure as input with internal pullup
   crank_reg &= ~_BV(crank_pin);
+  crank_port |= _BV(crank_pin);
   
   // Configure interrupt for input pin
   PCICR |= _BV(PCIE1);
