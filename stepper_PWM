@@ -6,6 +6,14 @@ Based on which output pin is toggled by which compare match ISR the direction ca
 controlled by setting the output compare register values (B should always be half of A).
 */
 
+/*
+STATUS UPDATE:
+Interrupt on PC0 works in isolation
+PWM signals with offset on output compare matches looked good on scope
+This code behaves weirdly though, main difference is the move stepper functions, probably need to test these more incrementally
+Right now it seems like the output pins change once for each input pin interrupt
+*/
+
 /*  Macro Definitions  */
 #define OCIEB          2 // should be built-in but isn't for some reason
 #define OCIEA          1 // should be built-in but isn't for some reason
