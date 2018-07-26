@@ -7,16 +7,17 @@ controlled by setting the output compare register values (B should always be hal
 */
 
 /*  Macro Definitions  */
-#define OCIEB         2 // should be built-in but isn't for some reason
-#define OCIEA         1 // should be built-in but isn't for some reason
-#define crank_pin   PC0 // pin that should be low normally, high 12V when cranking, and low again when done
-#define crank_reg  DDRC // input and output pins intentionally kept on separate registers
-#define crank_inp  PINC // pin register to read input pin val
-#define out_pin1    PD6 // pin for stepper driving output 1
-#define out_pin2    PD5 // pin for stepper driving output 2
-#define out_reg    DDRD // data direction register for output pins
-#define out_port  PORTD // port register to set output pin vals
-#define crank_stat    0 // bit address in gFlag, low is not cranking
+#define OCIEB          2 // should be built-in but isn't for some reason
+#define OCIEA          1 // should be built-in but isn't for some reason
+#define crank_pin    PC0 // pin that should be low normally, high 12V when cranking, and low again when done
+#define crank_reg   DDRC // input and output pins intentionally kept on separate registers
+#define crank_inp   PINC // pin register to read input pin val
+#define crank_port PORTC // port register for internal pull-up
+#define out_pin1     PD6 // pin for stepper driving output 1
+#define out_pin2     PD5 // pin for stepper driving output 2
+#define out_reg     DDRD // data direction register for output pins
+#define out_port   PORTD // port register to set output pin vals
+#define crank_stat     0 // bit address in gFlag, low is not cranking
 
 /*  Global Variables  */
 // coils required to be global because they will be accessed/changed by various functions
@@ -29,8 +30,9 @@ void setup() {
   
   sei(); // enable interrupts
   
-  // Cranking pin configure as input
+  // Cranking pin configure as input with internal pullup
   crank_reg &= ~_BV(crank_pin);
+  crank_port |= _BV(crank_pin);
   
   // Configure interrupt for input pin
   PCICR |= _BV(PCIE1);
