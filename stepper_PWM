@@ -1,69 +1,118 @@
 /*
-
+This script is being developed as part of a custom solution for opening and closing a choke plate during engine cranking.
+This script will be implemented on an ATmega 328p (first on arduino and then on a custom PCB). It will use an L293 dual
+H-bridge stepper driver. The basic mechanism will be to use timer0 output compare match A and B to toggle two output pins.
+Based on which output pin is toggled by which compare match ISR the direction can be changed. The speed of motion will be
+controlled by setting the output compare register values (B should always be half of A).
 */
 
-#define OC0A  PD6
-#define OC0B  PD5
-#define OCIEB   2
-#define OCIEA   1
-#define cranking_pin  PB0
+/*  Macro Definitions  */
+#define OCIEB         2 // should be built-in but isn't for some reason
+#define OCIEA         1 // should be built-in but isn't for some reason
+#define crank_pin   PC0 // pin that should be low normally, high 12V when cranking, and low again when done
+#define crank_reg  DDRC // input and output pins intentionally kept on separate registers
+#define crank_inp  PINC // pin register to read input pin val
+#define out_pin1    PD6 // pin for stepper driving output 1
+#define out_pin2    PD5 // pin for stepper driving output 2
+#define out_reg    DDRD // data direction register for output pins
+#define out_port  PORTD // port register to set output pin vals
+#define crank_stat    0 // bit address in gFlag, low is not cranking
+
+/*  Global Variables  */
+// coils required to be global because they will be accessed/changed by various functions
+uint8_t coil1 = out_pin1; // corresponds to PD6 at start
+uint8_t coil2 = out_pin2; // corresponds to PD5 at start
+volatile uint8_t gFlag = 0x00; // gFlag for state machine
+volatile uint8_t gSteps = 0x00; // stepper motor step counter
 
 void setup() {
   
   sei(); // enable interrupts
   
   // Cranking pin configure as input
-  DDRB &= ~_BV(cranking_pin);
+  crank_reg &= ~_BV(crank_pin);
   
-  // Timer setup
+  // Configure output pins as outputs and give them default starting values
+  // These are not driven by the timer output compares and need to be driven in ISRs
+  out_reg |= _BV(out_pin1) | _BV(out_pin2); // configure as outputs
+  out_port |= _BV(out_pin1) | _BV(out_pin2); // both high to start
   
-  // CTC Mode, 1024 prescaler
+  // Timer0 setup
+  
+  // CTC Mode (WGM00 -> 0, WGM01 -> 1, WGM02 -> 0), 1024 prescaler (CS00 -> 1, CS01 -> 0, CS02 -> 1)
   TCCR0A |= _BV(WGM01);
   TCCR0A &= ~_BV(WGM00);
   TCCR0B |= _BV(CS02) | _BV(CS00);
   TCCR0B &= ~_BV(CS01) & ~_BV(WGM02);
   
-  // Disable interrupts on output compare matches A and B
+  // disable interrupts on output compare matches A and B, these will be enabled when driving the stepper
   TIMSK0 &= ~_BV(OCIEB) & ~_BV(OCIEA);
   
   // Output compare vals
   OCR0A = 0xFF;
-  OCR0B = 0x80;
-  
-  // Configure output compare pins as inputs until cranking starts
-  // These are not driven by the timer output compares and need to be driven in ISRs
-  DDRD &= ~_BV(OC0A) & ~_BV(OC0B);
+  OCR0B = (uint8_t)(OCR0A/2);
   
 }
 
 // Interrupt ISRs for output compare match A and B
 
-ISR(TIMER0_COMPA_vect){
-  PORTD ^= _BV(OC0A);
+ISR(TIMER0_COMPA_vect) {
+  out_port ^= _BV(coil1);
+  gSteps++;
 }
 
-ISR(TIMER0_COMPB_vect){
-  PORTD ^= _BV(OC0B);
+ISR(TIMER0_COMPB_vect) {
+  out_port ^= _BV(coil2);
+  gSteps++;
+}
+
+// Interrupt ISR for choke pin
+
+ISR(PCINT1_vect) { // inverted logic because of sense circuit
+  if(bit_is_set(crank_inp,crank_pin)) {
+    gFlag &= ~_BV(crank_stat);
+  } else {
+    gFlag |= _BV(crank_stat);
+  }
+}
+
+void moveStepper(uint8_t pin1, uint8_t pin2, uint16_t degrees) {
+  // set coil pins
+  coil1 = pin1;
+  coil2 = pin2;
+  
+  gSteps = 0x00; // reset gSteps
+  uint8_t required_steps = (degrees/360)*200; // fraction of rotation multiplied by steps per rotation
+  
+  TCNT0 = 0x00; // clear timer0
+  
+  TIMSK0 |= _BV(OCIEB) | ~_BV(OCIEA); // enable interrupts on output compare match
+  
+  while(gSteps < required_steps) { // wait until it's done moving
+    // wait
+  }
+  
+  TIMSK0 &= ~_BV(OCIEB) & ~_BV(OCIEA); // disable interrupts on output compare match
+}
+
+void openChoke(uint16_t degrees) {
+  moveStepper(out_pin1, out_pin2, degrees);
+}
+
+void closeChoke(uint16_t degrees) {
+  moveStepper(out_pin2, out_pin1, degrees);
 }
 
 void loop() {
+  if(bit_is_set(gFlag,crank_stat)) { // if cranking starts
   
-  if(bit_is_set(PINB,cranking_pin)){
+    openChoke(90);
     
-    // configure driving pins as outputs
-    DDRD |= _BV(OC0A) | _BV(OC0B);
+    while(bit_is_set(gFlag,crank_stat)) {
+      // wait
+    }
     
-    // Enable interrupts on output compare matches A and B
-    TIMSK0 |= _BV(OCIEB) | _BV(OCIEA); // start stepper driving
+    closeChoke(90);
     
-    _delay_ms(500); // wait half second for stepper to open choke
-    
-    // Disable interrupts on output compare matches A and B
-    TIMSK0 &= ~_BV(OCIEB) & ~_BV(OCIEA); // stop stepper driving
-    
-    _delay_ms(5000); // wait preset time until cranking is done?
-    
-    DDRD &= ~_BV(OC0A) & ~_BV(OC0B); // stop driving pins so stepper doesn't resistance sprung closing of choke?
   }
-  
 }
