@@ -8,23 +8,25 @@ controlled by setting the output compare register values (B should always be hal
 
 /*
 STATUS UPDATE:
-Interrupt on PC0 works in isolation
-PWM signals with offset on output compare matches looked good on scope, tested with stepper and it drives fine
-This code behaves weirdly though, main difference is the move stepper functions, probably need to test these more incrementally
-Right now it seems like the output pins change once for each input pin interrupt
+This code turns the stepper motion on and off reliably on PC0 interrupt
+Need to edit to open and then close stepper on PC0 interrupt
+Then need to add some stuff for in field calibration
+This is probably enough POC to get a PCB spun though
 */
 
 /*  Macro Definitions  */
-#define OCIEB          2 // should be built-in but isn't for some reason
-#define OCIEA          1 // should be built-in but isn't for some reason
+#define OCIEB         2 // should be built-in but isn't for some reason
+#define OCIEA         1 // should be built-in but isn't for some reason
+
+#define out_pin1    PD6 // pin for stepper driving output 1
+#define out_pin2    PD5 // pin for stepper driving output 2
+#define out_reg    DDRD // data direction register for output pins
+#define out_port  PORTD // port register to set output pin vals
+
 #define crank_pin    PC0 // pin that should be low normally, high 12V when cranking, and low again when done
 #define crank_reg   DDRC // input and output pins intentionally kept on separate registers
 #define crank_inp   PINC // pin register to read input pin val
 #define crank_port PORTC // port register for internal pull-up
-#define out_pin1     PD6 // pin for stepper driving output 1
-#define out_pin2     PD5 // pin for stepper driving output 2
-#define out_reg     DDRD // data direction register for output pins
-#define out_port   PORTD // port register to set output pin vals
 #define crank_stat     0 // bit address in gFlag, low is not cranking
 
 /*  Global Variables  */
@@ -32,7 +34,6 @@ Right now it seems like the output pins change once for each input pin interrupt
 uint8_t coil1 = out_pin1; // corresponds to PD6 at start
 uint8_t coil2 = out_pin2; // corresponds to PD5 at start
 volatile uint8_t gFlag = 0x00; // gFlag for state machine
-volatile uint8_t gSteps = 0x00; // stepper motor step counter
 
 void setup() {
   
@@ -45,6 +46,9 @@ void setup() {
   // Configure interrupt for input pin
   PCICR |= _BV(PCIE1);
   PCMSK1 |= _BV(PC0);
+  
+  // Toggling LED for testing
+  DDRB |= _BV(PB5);
   
   // Configure output pins as outputs and give them default starting values
   // These are not driven by the timer output compares and need to be driven in ISRs
@@ -72,12 +76,10 @@ void setup() {
 
 ISR(TIMER0_COMPA_vect) {
   out_port ^= _BV(coil1);
-  gSteps++;
 }
 
 ISR(TIMER0_COMPB_vect) {
   out_port ^= _BV(coil2);
-  gSteps++;
 }
 
 // Interrupt ISR for choke pin
@@ -90,43 +92,18 @@ ISR(PCINT1_vect) { // inverted logic because of sense circuit
   }
 }
 
-void moveStepper(uint8_t pin1, uint8_t pin2, uint16_t degrees) {
-  // set coil pins
-  coil1 = pin1;
-  coil2 = pin2;
-  
-  gSteps = 0x00; // reset gSteps
-  uint8_t required_steps = (degrees/360)*200; // fraction of rotation multiplied by steps per rotation
-  
-  TCNT0 = 0x00; // clear timer0
-  
-  TIMSK0 |= _BV(OCIEB) | ~_BV(OCIEA); // enable interrupts on output compare match
-  
-  while(gSteps < required_steps) { // wait until it's done moving
-    // wait
-  }
-  
-  TIMSK0 &= ~_BV(OCIEB) & ~_BV(OCIEA); // disable interrupts on output compare match
-}
-
-void openChoke(uint16_t degrees) {
-  moveStepper(out_pin1, out_pin2, degrees);
-}
-
-void closeChoke(uint16_t degrees) {
-  moveStepper(out_pin2, out_pin1, degrees);
-}
-
 void loop() {
-  if(bit_is_set(gFlag,crank_stat)) { // if cranking starts
+  if (bit_is_set(gFlag,crank_stat)) { // if cranking starts
   
-    openChoke(90);
+    PORTB |= _BV(PB5);
+    TIMSK0 |= _BV(OCIEB) | _BV(OCIEA);
     
     while(bit_is_set(gFlag,crank_stat)) {
       // wait
     }
     
-    closeChoke(90);
+    PORTB &= ~_BV(PB5);
+    TIMSK0 &= ~_BV(OCIEB) & ~_BV(OCIEA);
     
   }
 }
