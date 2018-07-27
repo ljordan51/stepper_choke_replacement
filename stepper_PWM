@@ -9,7 +9,7 @@ controlled by setting the output compare register values (B should always be hal
 /*
 STATUS UPDATE:
 Interrupt on PC0 works in isolation
-PWM signals with offset on output compare matches looked good on scope
+PWM signals with offset on output compare matches looked good on scope, tested with stepper and it drives fine
 This code behaves weirdly though, main difference is the move stepper functions, probably need to test these more incrementally
 Right now it seems like the output pins change once for each input pin interrupt
 */
